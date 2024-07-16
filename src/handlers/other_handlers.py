@@ -17,8 +17,11 @@ async def start(msg: Message):
 @rt.message(Command("help"), StateFilter(default_state))
 async def help(msg: Message):
     await msg.answer(lexicon["help"])
-    await msg.answer_photo(FSInputFile("src/sample_photos/sample_input.png"), caption=lexicon["help_sample_input"])
-    await msg.answer_photo(FSInputFile("src/sample_photos/sample_output.png"), caption=lexicon["help_sample_output"])
+    await msg.answer_photo(FSInputFile("src/sample_photos/sample_input_sticker.png"), caption=lexicon["help_sample_input"])
+    await msg.answer_photo(FSInputFile("src/sample_photos/sample_output_sticker.png"), caption=lexicon["help_sample_output"])
+    await msg.answer_photo(FSInputFile("src/sample_photos/sample_input_emoji.png"), caption=lexicon["help_sample_input"])
+    await msg.answer_photo(FSInputFile("src/sample_photos/sample_output_emoji.png"), caption=lexicon["help_sample_output"])
+
     
 
 @rt.message(Command("cancel"))

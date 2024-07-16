@@ -8,12 +8,13 @@ from PIL import Image
 from typing import Literal
 import uuid
 
-TELEGRAM_STICKER_PREVIEW_GAP = 20
+MAX_INITIAL_STICKERS = 50
+CUSTOM_EMOJI_SIZE = 100
 
 def slice_photo(photo_path: str,
                 slicing_shape: tuple[int, int],  
+                crop: int,
                 target_folder: str = None,
-                crop: int = TELEGRAM_STICKER_PREVIEW_GAP,
                 delete_original: bool = False):
     """
     Slice photo into grid of subphotos and save them into *target_folder*. 
@@ -27,7 +28,7 @@ def slice_photo(photo_path: str,
         Shape of the grid to be sliced in. 
     target_folder: str (default is None)
         Folder for subphotos to be saved to. If not specified, save to folder of original photo.
-    crop: int (default is 0)
+    crop: int 
         Shrink all subphotos by *crop* pixels.
     delete_original: bool (default is False)
         Delete original photo
@@ -53,6 +54,7 @@ async def create_stickerpack_from_photos(bot: Bot,
                             title: str,
                             user_id: int,
                             name_prefix: str,
+                            type: Literal["custom_emoji", "regular"],
                             bot_username: str = BOT_USERNAME,
                             format: Literal["static"] = "static", 
                             ) -> str:
@@ -72,6 +74,8 @@ async def create_stickerpack_from_photos(bot: Bot,
         ID of the stickerpack creator
     name_prefix: str
         The stickerpack name prefix.
+    type:Literal["custom_emoji", "regular"]
+        If set will be emoji pack or sticker packs
     bot_username: str (default is "Sticker mosaic"):
         The stickerpack bot username in stickerpack name. 
     format: str (default is "static)
@@ -82,20 +86,44 @@ async def create_stickerpack_from_photos(bot: Bot,
         i = int(x[x.find('_') + 1: x.rfind('_')])
         j = int(x[x.rfind('_') + 1: x.find('.')])
         return j * 100 + i
-    
-    MIN_STICKER_SIZE = 512
+    if type == "regular":
+        MIN_STICKER_SIZE = 512
+    else: 
+        MIN_STICKER_SIZE = 100
     stickers = []
     for file in os.listdir(photo_folder_path):
         photo = Image.open(f"{photo_folder_path}/{file}")
-        # adjusting
-        if max(photo.size) < MIN_STICKER_SIZE:
-            ratio = MIN_STICKER_SIZE / max(photo.size)
-            photo = photo.resize((round(photo.size[0] * ratio), round(photo.size[1] * ratio)))
+        if type == "regular":
+            if max(photo.size) < MIN_STICKER_SIZE:
+                ratio = MIN_STICKER_SIZE / max(photo.size)
+                shape = (round(photo.size[0] * ratio), round(photo.size[1] * ratio))
+                photo = photo.resize(shape)
+                os.remove(f"{photo_folder_path}/{file}")
+                photo.save(f"{photo_folder_path}/{file}")
             os.remove(f"{photo_folder_path}/{file}")
             photo.save(f"{photo_folder_path}/{file}")
+        else:
+            shape = list(photo.size)
+            for i in range(len(shape)):
+                if shape[i] > CUSTOM_EMOJI_SIZE:
+                    mod = shape[i] % CUSTOM_EMOJI_SIZE
+                else:
+                    mod = CUSTOM_EMOJI_SIZE - shape[i]
+                if mod:
+                    if shape[i] + mod == CUSTOM_EMOJI_SIZE:
+                        shape[i] += mod
+                    else: 
+                        shape[i] -= mod
+            photo = photo.resize(shape)
+            os.remove(f"{photo_folder_path}/{file}")
+            photo.save(f"{photo_folder_path}/{file}")
+
+                
         stickers.append(InputSticker(sticker=FSInputFile(f"{photo_folder_path}/{file}"),
                                       format=format, 
                                       emoji_list=[MOSAIC_STICKER_EMOTE]))
+            
+
         
     stickers = [InputSticker(sticker=FSInputFile(f"{photo_folder_path}/{photo}"), format=format, emoji_list=[MOSAIC_STICKER_EMOTE])
                 for photo in sorted(os.listdir(photo_folder_path), key=_sliced_photo_sort_key)]
@@ -103,5 +131,11 @@ async def create_stickerpack_from_photos(bot: Bot,
     await bot.create_new_sticker_set(user_id=user_id,
                         name=stickerpack_name,
                         title=title,
-                        stickers=stickers)
+                        stickers=stickers[:MAX_INITIAL_STICKERS],
+                        sticker_type=type)
+    if len(stickers) > MAX_INITIAL_STICKERS:
+        for sticker in stickers[MAX_INITIAL_STICKERS:]:
+            await bot.add_sticker_to_set(user_id=user_id,
+                                        name=stickerpack_name,
+                                        sticker=sticker)
     return stickerpack_name
